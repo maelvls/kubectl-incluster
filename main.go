@@ -17,10 +17,11 @@ import (
 )
 
 var (
-	kubeconfig  = flag.String("kubeconfig", "", "")
-	kubecontext = flag.String("context", "", "")
-	root        = flag.String("root", os.Getenv("CONTAINER_ROOT"), "The container root. You can also set CONTAINER_ROOT instead.")
-	embed       = flag.Bool("embed", false, "Embed the token and ca.crt data inside the kubeconfig instead of using file paths.")
+	kubeconfig    = flag.String("kubeconfig", "", "")
+	kubecontext   = flag.String("context", "", "")
+	root          = flag.String("root", os.Getenv("CONTAINER_ROOT"), "The container root. You can also set CONTAINER_ROOT instead.")
+	embed         = flag.Bool("embed", false, "Embed the token and ca.crt data inside the kubeconfig instead of using file paths.")
+	replacecacert = flag.String("replace-cacert", "", "Instead of using the cacert provided in /var/run/secrets, use this one. Useful when using a proxy like mitmproxy.")
 )
 
 func main() {
@@ -32,7 +33,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	kubeconfig, err := kubeconfigFromRestConfig(c, *embed)
+	kubeconfig, err := kubeconfigFromRestConfig(c, *embed, *replacecacert)
 	if err != nil {
 		logutil.Errorf("building the kubeconfig: %s", err)
 		os.Exit(1)
@@ -48,20 +49,25 @@ func main() {
 // When embed is true, the ca certificate and token are embedded in the
 // kube config as a base64 string. Otherwise, the paths to the token and to
 // the ca file are used in the kube config.
-func kubeconfigFromRestConfig(restconf *rest.Config, embed bool) (*clientcmdapi.Config, error) {
+func kubeconfigFromRestConfig(restconf *rest.Config, embed bool, replaceCACertFile string) (*clientcmdapi.Config, error) {
 	apiconf := clientcmdapi.NewConfig()
+
+	caFile := restconf.TLSClientConfig.CAFile
+	if replaceCACertFile != "" {
+		caFile = replaceCACertFile
+	}
 
 	apiconf.Clusters["foo"] = &clientcmdapi.Cluster{
 		Server: restconf.Host,
 	}
 	if embed {
-		bytes, err := ioutil.ReadFile(restconf.TLSClientConfig.CAFile)
+		bytes, err := ioutil.ReadFile(caFile)
 		if err != nil {
 			return nil, fmt.Errorf("reading ca.crt: %w", err)
 		}
 		apiconf.Clusters["foo"].CertificateAuthorityData = bytes
 	} else {
-		apiconf.Clusters["foo"].CertificateAuthority = restconf.TLSClientConfig.CAFile
+		apiconf.Clusters["foo"].CertificateAuthority = caFile
 	}
 
 	apiconf.AuthInfos["foo"] = &clientcmdapi.AuthInfo{}
@@ -70,6 +76,11 @@ func kubeconfigFromRestConfig(restconf *rest.Config, embed bool) (*clientcmdapi.
 	} else {
 		apiconf.AuthInfos["foo"].TokenFile = restconf.BearerTokenFile
 	}
+
+	apiconf.CurrentContext = "foo"
+	apiconf.Contexts["foo"] = clientcmdapi.NewContext()
+	apiconf.Contexts["foo"].Cluster = "foo"
+	apiconf.Contexts["foo"].AuthInfo = "foo"
 
 	return apiconf, nil
 }
