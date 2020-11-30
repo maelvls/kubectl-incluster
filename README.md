@@ -14,6 +14,7 @@ kubeconfig that you can use somewhere else.
 
 ## Usecase: telepresence + mitmproxy
 
+In order to inspect the egress traffic coming from a Kubernetes controller (here, [cert-manager](https://github.com/jetstack/cert-manager)),
 I want to be able to use mitmproxy through a Telepresence `--run-shell`
 session. For example, let's imagine you have a cert-manager deployment
 already running and that you want to see what requests it makes.
