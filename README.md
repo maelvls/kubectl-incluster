@@ -77,7 +77,7 @@ HTTPS_PROXY=localhost:9090 go run ./cmd/controller --leader-elect=false --kubeco
 
 And TADA! We see all the requests made by our controller:
 
-<img alt="An mitmproxy screenshot when debugging cert-manager-controller. Screenshot stored in the issue https://github.com/maelvls/kubectl-incluster/issues/1" src="https://user-images.githubusercontent.com/2195781/100645025-64f89880-333c-11eb-9a3f-b6aa8cde497d.png" width="500">
+<img alt="An mitmproxy screenshot when debugging cert-manager-controller. Screenshot stored in the issue https://github.com/maelvls/kubectl-incluster/issues/1" src="https://user-images.githubusercontent.com/2195781/100645025-64f89880-333c-11eb-9a3f-b6aa8cde497d.png">
 
 ## Use-case: telepresence + mitmproxy for debugging the preflight agent
 
@@ -134,7 +134,7 @@ HTTPS_PROXY=127.0.0.1:9090 KUBECONFIG=$(kubectl incluster --root $TELEPRESENCE_R
 
 You will see:
 
-<img alt="An mitmproxy screenshot when debugging the preflight agent that reports to https://platform.jetstack.io. Screenshot stored in the issue https://github.com/maelvls/kubectl-incluster/issues/1" src="https://user-images.githubusercontent.com/2195781/110499573-aa292500-80f8-11eb-8570-c90b56475f27.png" width="500">
+<img alt="An mitmproxy screenshot when debugging the preflight agent that reports to https://platform.jetstack.io. Screenshot stored in the issue https://github.com/maelvls/kubectl-incluster/issues/1" src="https://user-images.githubusercontent.com/2195781/110499573-aa292500-80f8-11eb-8570-c90b56475f27.png">
 
 ## Use-case: mitmproxy inside the cluster (as opposed to using telepresence)
 
