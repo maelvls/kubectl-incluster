@@ -108,16 +108,17 @@ mitmproxy -p 9090 --ssl-insecure
 
 Finally you can run the agent:
 
-> **🔰 Tip:** to know which command-line arguments are used by a given deployment,
+> **🔰  Tip:** to know which command-line arguments are used by a given deployment,
 > you can use `kubectl-args` that extracts the `args` for the deployment.
 > Imagining that you have `~/bin` in your PATH, you can install it with:
 >
 > ```sh
-> cat <<'EOF' > tmp && install tmp ~/bin/kubectl-args
+> cat <<'EOF' > /tmp/kubectl-args
 > #! /bin/bash
 > set -e -o pipefail
-> kubectl get deploy -ojsonpath='{.spec.template.spec.containers[0].args}' "$@" | jq -r '.[]> ' | awk '{if($2 != ""){print "\"" $0 "\""}else{print $0}}' |  tr '\n' ' '; echo
+> kubectl get deploy -ojsonpath='{.spec.template.spec.containers[0].args}' "$@" | jq -r '.[]' | awk '{if($2 != ""){print "\"" $0 "\""}else{print $0}}' |  tr '\n' ' '; echo
 > EOF
+> install /tmp/kubectl-args ~/bin
 > ```
 >
 > Then, use it with:
