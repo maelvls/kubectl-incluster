@@ -77,9 +77,6 @@ HTTPS_PROXY=localhost:9090 go run ./cmd/controller --leader-elect=false --kubeco
 
 And TADA! We see all the requests made by our controller:
 
-<<<<<<< HEAD
-![mitmproxy-screenshot](https://user-images.githubusercontent.com/2195781/100645025-64f89880-333c-11eb-9a3f-b6aa8cde497d.png)
-=======
 <img alt="An mitmproxy screenshot when debugging cert-manager-controller. Screenshot stored in the issue https://github.com/maelvls/kubectl-incluster/issues/1" src="https://user-images.githubusercontent.com/2195781/100645025-64f89880-333c-11eb-9a3f-b6aa8cde497d.png" width="500">
 
 ## Use-case: telepresence + mitmproxy for debugging the preflight agent
