@@ -1,4 +1,4 @@
-## kubectl-incluster
+# kubectl-incluster
 
 I wrote this kubectl plugin in order to create a kubeconfig file out of an
 in-cluster configuration, i.e., using the mounted service account token and
@@ -14,12 +14,11 @@ kubeconfig that you can use somewhere else.
 
 **Content:**
 
-- [kubectl-incluster](#kubectl-incluster)
-- [Usecase: telepresence + mitmproxy for debugging cert-manager](#usecase-telepresence--mitmproxy-for-debugging-cert-manager)
+- [Use-case: telepresence + mitmproxy for debugging cert-manager](#use-case-telepresence--mitmproxy-for-debugging-cert-manager)
 - [Use-case: telepresence + mitmproxy for debugging the preflight agent](#use-case-telepresence--mitmproxy-for-debugging-the-preflight-agent)
 - [Use-case: mitmproxy inside the cluster (as opposed to using telepresence)](#use-case-mitmproxy-inside-the-cluster-as-opposed-to-using-telepresence)
 
-## Usecase: telepresence + mitmproxy for debugging cert-manager
+## Use-case: telepresence + mitmproxy for debugging cert-manager
 
 In order to inspect the egress traffic coming from a Kubernetes controller
 (here, [cert-manager](https://github.com/jetstack/cert-manager)), I want to
