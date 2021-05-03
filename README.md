@@ -17,6 +17,7 @@ kubeconfig that you can use somewhere else.
 - [Use-case: telepresence + mitmproxy for debugging cert-manager](#use-case-telepresence--mitmproxy-for-debugging-cert-manager)
 - [Use-case: telepresence + mitmproxy for debugging the preflight agent](#use-case-telepresence--mitmproxy-for-debugging-the-preflight-agent)
 - [Use-case: mitmproxy inside the cluster (as opposed to using telepresence)](#use-case-mitmproxy-inside-the-cluster-as-opposed-to-using-telepresence)
+- [Use-case: mitmproxy without kubectl-incluster](#use-case-mitmproxy-without-kubectl-incluster)
 
 ## Use-case: telepresence + mitmproxy for debugging cert-manager
 
@@ -214,3 +215,49 @@ and add the following to the container's `env`:
 
 ⚠️ IMPORTANT ⚠️ : you also have to make sure the container's binary can
 disable TLS verification. Otherwise, no way to do that...
+
+## Use-case: mitmproxy without kubectl-incluster
+
+Let us imagine we want to trace what `kubectl get pods` is doing under the
+hood.
+
+First, let us work around the fact that Go binaries do not honor the
+`HTTPS_PROXY` variable for the `127.0.0.1` and `localhost` domains. Instead
+of `127.0.0.1`, we will use the domain `me`:
+
+```sh
+grep "127.0.0.1[ ]*me$" /etc/hosts || sudo tee --append /etc/hosts <<<"127.0.0.1 me"
+```
+
+Then, let us make sure our system trusts Mitmproxy's root CA:
+
+```sh
+# Linux
+sudo mkdir -p /usr/share/ca-certificates/mitmproxy
+sudo cp ~/.mitmproxy/mitmproxy-ca-cert.pem /usr/share/ca-certificates/mitmproxy/mitmproxy-ca-cert.crt
+grep mitmproxy/mitmproxy-ca-cert.crt /etc/ca-certificates.conf \
+  || sudo tee --append /etc/ca-certificates.conf <<<mitmproxy/mitmproxy-ca-cert.crt
+sudo update-ca-certificates
+
+# macOS
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.mitmproxy/mitmproxy-ca-cert.pem
+```
+
+Let us start `mitmproxy`. We have to use `--ssl-insecure` due to the fact
+that we don't want to bother having `mitmproxy` to trust the apiserver:
+
+```sh
+mitmproxy -p 9090 --ssl-insecure
+```
+
+Finally, let us run the command we want to HTTP-inspect:
+
+```sh
+HTTPS_PROXY=:9090 KUBECONFIG=<(kubectl config view --minify --flatten \
+    | sed "s|certificate-authority-data:.*|certificate-authority-data: $(base64 -w0 < ~/.mitmproxy/mitmproxy-ca-cert.pem)|g" \
+    | sed "s|127.0.0.1|me|") \
+  kubectl get pods
+```
+
+> 🔰 The command `kubectl config view --minify` prints the kube config for
+> the current context, which comes in very handy here.
