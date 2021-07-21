@@ -17,11 +17,13 @@ import (
 )
 
 var (
-	kubeconfig    = flag.String("kubeconfig", "", "")
-	kubecontext   = flag.String("context", "", "")
-	root          = flag.String("root", os.Getenv("CONTAINER_ROOT"), "The container root. You can also set CONTAINER_ROOT instead. If TELEPRESENCE_ROOT is set, it will default to that.")
-	deprecated    = flag.Bool("embed", false, "Deprecated since this is now the default behavior. Embeds the token and ca.crt data inside the kubeconfig instead of using file paths.")
-	replacecacert = flag.String("replace-cacert", "", "Instead of using the cacert provided in /var/run/secrets or in the kube config, use this one. Useful when using a proxy like mitmproxy.")
+	kubeconfig      = flag.String("kubeconfig", "", "")
+	kubecontext     = flag.String("context", "", "")
+	root            = flag.String("root", os.Getenv("CONTAINER_ROOT"), "The container root. You can also set CONTAINER_ROOT instead. If TELEPRESENCE_ROOT is set, it will default to that.")
+	deprecated      = flag.Bool("embed", false, "Deprecated since this is now the default behavior. Embeds the token and ca.crt data inside the kubeconfig instead of using file paths.")
+	replacecacert   = flag.String("replace-ca-cert", "", "Instead of using the cacert provided in /var/run/secrets or in the kube config, use this one. Useful when using a proxy like mitmproxy.")
+	printClientCert = flag.Bool("print-client-cert", false, "Instead of printing the kube config, print the content of the kube config's client-certificate-data followed by the client-key-data.")
+	printCACert     = flag.Bool("print-ca-cert", false, "Instead of printing a kubeconfig, print the content of the kube config's certificate-authority-data.")
 )
 
 func main() {
@@ -42,16 +44,71 @@ func main() {
 		os.Exit(1)
 	}
 
-	kubeconfig, err := kubeconfigFromRestConfig(c, *replacecacert)
-	if err != nil {
-		logutil.Errorf("building the kubeconfig: %s", err)
-		os.Exit(1)
+	if *printClientCert {
+		pem, err := clientCertPEMFromRestConfig(c)
+		if err != nil {
+			logutil.Errorf("building the PEM bundle with the client-certificate-data and client-key-data: %s", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("%s", pem)
+
+		return
+	} else if *printCACert {
+		kubeconfig, err := kubeconfigFromRestConfig(c, *replacecacert)
+		if err != nil {
+			logutil.Errorf("building the kubeconfig: %s", err)
+			os.Exit(1)
+		}
+
+		err = clientcmd.WriteToFile(*kubeconfig, "/dev/stdout")
+		if err != nil {
+			logutil.Errorf("writing: %s", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func clientCertPEMFromRestConfig(restconf *rest.Config) ([]byte, error) {
+	var clientPEM []byte
+
+	if len(restconf.TLSClientConfig.CertData) > 0 {
+		clientPEM = append(clientPEM, restconf.TLSClientConfig.CertData...)
+	} else if restconf.TLSClientConfig.CertFile != "" {
+		bytes, err := ioutil.ReadFile(restconf.TLSClientConfig.CertFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading client certificate file: %w", err)
+		}
+
+		clientPEM = append(clientPEM, bytes...)
 	}
 
-	err = clientcmd.WriteToFile(*kubeconfig, "/dev/stdout")
-	if err != nil {
-		logutil.Errorf("writing: %s", err)
-		os.Exit(1)
+	if restconf.TLSClientConfig.KeyFile != "" {
+		bytes, err := ioutil.ReadFile(restconf.TLSClientConfig.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading client key file: %w", err)
+		}
+
+		clientPEM = append(clientPEM, bytes...)
+	} else if len(restconf.TLSClientConfig.KeyData) > 0 {
+		clientPEM = append(clientPEM, restconf.TLSClientConfig.KeyData...)
+	} else if restconf.BearerTokenFile != "" {
+		return nil, fmt.Errorf("cannot produce a PEM client certificate bundle when the kube config uses a token")
+	}
+
+	return clientPEM, nil
+}
+
+func caCertPEMFromRestConfig(restconf *rest.Config) ([]byte, error) {
+	if len(restconf.TLSClientConfig.CAData) > 0 {
+		return restconf.TLSClientConfig.CAData, nil
+	} else if restconf.TLSClientConfig.CAFile != "" {
+		bytes, err := ioutil.ReadFile(restconf.TLSClientConfig.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading client certificate file: %w", err)
+		}
+
+		return bytes, nil
 	}
 }
 

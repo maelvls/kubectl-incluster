@@ -32,15 +32,15 @@ script that makes sure the streaming GET requests are properly streamed by
 mitmproxy:
 
 ```sh
-curl -LO https://raw.githubusercontent.com/maelvls/kubectl-incluster/main/watch-stream.py
-mitmproxy -p 9090 --ssl-insecure -s watch-stream.py
+curl -L https://raw.githubusercontent.com/maelvls/kubectl-incluster/main/watch-stream.py >/tmp/watch-stream.py
+mitmproxy -p 9090 --ssl-insecure -s /tmp/watch-stream.py --set client_certs=<(kubectl incluster --print-client-cert)
 ```
 
 > Note that we could avoid using `--ssl-insecure` by replacing it with
 > something like:
 >
 > ```sh
-> mitmproxy -p 9090 --set ssl_verify_upstream_trusted_ca=$TELEPRESENCE_ROOT/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+> mitmproxy -p 9090 --set ssl_verify_upstream_trusted_ca=<(kubectl incluster --print-ca-cert)
 > ```
 >
 > But since I don't run mitmproxy from inside the Telepresence shell, I
@@ -73,7 +73,7 @@ T: Setup complete. Launching your command.
 Now, from this shell, let us run cert-manager:
 
 ```sh
-HTTPS_PROXY=localhost:9090 go run ./cmd/controller --leader-elect=false --kubeconfig <(kubectl incluster --root $TELEPRESENCE_ROOT --replace-cacert ~/.mitmproxy/mitmproxy-ca.pem) -v=4
+HTTPS_PROXY=localhost:9090 go run ./cmd/controller --leader-elect=false --kubeconfig <(kubectl incluster --root $TELEPRESENCE_ROOT --replace-ca-cert ~/.mitmproxy/mitmproxy-ca.pem) -v=4
 ```
 
 And TADA! We see all the requests made by our controller:
@@ -104,12 +104,13 @@ telepresence --namespace jetstack-secure --swap-deployment agent --run-shell
 Run the mitmproxy instance:
 
 ```sh
-mitmproxy -p 9090 --ssl-insecure
+# In another shell, not in the telepresence shell.
+mitmproxy -p 9090 --ssl-insecure --set client_certs=<(kubectl incluster --print-client-cert)
 ```
 
 Finally you can run the agent:
 
-> **🔰  Tip:** to know which command-line arguments are used by a given deployment,
+> **🔰 Tip:** to know which command-line arguments are used by a given deployment,
 > you can use `kubectl-args` that extracts the `args` for the deployment.
 > Imagining that you have `~/bin` in your PATH, you can install it with:
 >
@@ -130,7 +131,8 @@ Finally you can run the agent:
 > ```
 
 ```sh
-HTTPS_PROXY=127.0.0.1:9090 KUBECONFIG=$(kubectl incluster --root $TELEPRESENCE_ROOT --replace-cacert ~/.mitmproxy/mitmproxy-ca.pem >/tmp/foo && echo /tmp/foo) preflight agent -c $TELEPRESENCE_ROOT/etc/jetstack-secure/agent/config/config.yaml -k $TELEPRESENCE_ROOT/etc/jetstack-secure/agent/credentials/credentials.json -p 0h1m0s
+# Inside the telepresence shell.
+HTTPS_PROXY=127.0.0.1:9090 KUBECONFIG=$(kubectl incluster --root $TELEPRESENCE_ROOT --replace-ca-cert ~/.mitmproxy/mitmproxy-ca.pem >/tmp/foo && echo /tmp/foo) preflight agent -c $TELEPRESENCE_ROOT/etc/jetstack-secure/agent/config/config.yaml -k $TELEPRESENCE_ROOT/etc/jetstack-secure/agent/credentials/credentials.json -p 0h1m0s
 ```
 
 You will see:
@@ -206,9 +208,9 @@ kubectl edit deploy your-deployment
 and add the following to the container's `env`:
 
 ```yaml
-    spec:
-      containers:
-      - env:
+spec:
+  containers:
+    - env:
         - name: HTTPS_PROXY
           value: http://mitmproxy:9090
 ```
@@ -243,11 +245,16 @@ sudo update-ca-certificates
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.mitmproxy/mitmproxy-ca-cert.pem
 ```
 
-Let us start `mitmproxy`. We have to use `--ssl-insecure` due to the fact
-that we don't want to bother having `mitmproxy` to trust the apiserver:
+Let us start `mitmproxy`. We have to use `--ssl-insecure` due to the fact that
+we don't want to bother having `mitmproxy` to trust the apiserver. We need to
+give the correct client certificate to the proxy (if you are using a client
+certificate):
 
 ```sh
-mitmproxy -p 9090 --ssl-insecure
+curl -L https://raw.githubusercontent.com/maelvls/kubectl-incluster/main/watch-stream.py >/tmp/watch-stream.py
+kubectl config view --minify --flatten -o=go-template='{{(index ((index .users 0).user) "client-key-data")}}' | base64 -d >/tmp/client.pem
+kubectl config view --minify --flatten -o=go-template='{{(index ((index .users 0).user) "client-certificate-data")}}' | base64 -d >>/tmp/client.pem
+mitmproxy -p 9090 --ssl-insecure --set client_certs=/tmp/client.pem -s /tmp/watch-stream.py
 ```
 
 Finally, let us run the command we want to HTTP-inspect:
