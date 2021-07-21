@@ -44,17 +44,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *printClientCert {
+	switch {
+	case *printClientCert:
 		pem, err := clientCertPEMFromRestConfig(c)
 		if err != nil {
 			logutil.Errorf("building the PEM bundle with the client-certificate-data and client-key-data: %s", err)
 			os.Exit(1)
 		}
-
 		fmt.Printf("%s", pem)
-
-		return
-	} else if *printCACert {
+	case *printCACert:
+		pem, err := caCertPEMFromRestConfig(c)
+		if err != nil {
+			logutil.Errorf("building the PEM bundle with the ca-certificate-data: %s", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s", pem)
+	default:
 		kubeconfig, err := kubeconfigFromRestConfig(c, *replacecacert)
 		if err != nil {
 			logutil.Errorf("building the kubeconfig: %s", err)
@@ -110,6 +115,8 @@ func caCertPEMFromRestConfig(restconf *rest.Config) ([]byte, error) {
 
 		return bytes, nil
 	}
+
+	return nil, fmt.Errorf("no ca-certificate-data nor ca-certificate-file")
 }
 
 // When embed is true, the ca certificate and token are embedded in the
