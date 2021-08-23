@@ -74,19 +74,9 @@ func main() {
 	}
 }
 
+// The PEM-encoded private key is displayed first.
 func clientCertPEMFromRestConfig(restconf *rest.Config) ([]byte, error) {
 	var clientPEM []byte
-
-	if len(restconf.TLSClientConfig.CertData) > 0 {
-		clientPEM = append(clientPEM, restconf.TLSClientConfig.CertData...)
-	} else if restconf.TLSClientConfig.CertFile != "" {
-		bytes, err := ioutil.ReadFile(restconf.TLSClientConfig.CertFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading client certificate file: %w", err)
-		}
-
-		clientPEM = append(clientPEM, bytes...)
-	}
 
 	if restconf.TLSClientConfig.KeyFile != "" {
 		bytes, err := ioutil.ReadFile(restconf.TLSClientConfig.KeyFile)
@@ -99,6 +89,17 @@ func clientCertPEMFromRestConfig(restconf *rest.Config) ([]byte, error) {
 		clientPEM = append(clientPEM, restconf.TLSClientConfig.KeyData...)
 	} else if restconf.BearerTokenFile != "" {
 		return nil, fmt.Errorf("cannot produce a PEM client certificate bundle when the kube config uses a token")
+	}
+
+	if len(restconf.TLSClientConfig.CertData) > 0 {
+		clientPEM = append(clientPEM, restconf.TLSClientConfig.CertData...)
+	} else if restconf.TLSClientConfig.CertFile != "" {
+		bytes, err := ioutil.ReadFile(restconf.TLSClientConfig.CertFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading client certificate file: %w", err)
+		}
+
+		clientPEM = append(clientPEM, bytes...)
 	}
 
 	return clientPEM, nil

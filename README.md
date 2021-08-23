@@ -18,6 +18,7 @@ kubeconfig that you can use somewhere else.
 - [Use-case: telepresence + mitmproxy for debugging the preflight agent](#use-case-telepresence--mitmproxy-for-debugging-the-preflight-agent)
 - [Use-case: mitmproxy inside the cluster (as opposed to using telepresence)](#use-case-mitmproxy-inside-the-cluster-as-opposed-to-using-telepresence)
 - [Use-case: mitmproxy without kubectl-incluster](#use-case-mitmproxy-without-kubectl-incluster)
+  - [The `--print-client-cert` flag](#the---print-client-cert-flag)
 
 ## Use-case: telepresence + mitmproxy for debugging cert-manager
 
@@ -268,3 +269,66 @@ HTTPS_PROXY=:9090 KUBECONFIG=<(kubectl config view --minify --flatten \
 
 > 🔰 The command `kubectl config view --minify` prints the kube config for
 > the current context, which comes in very handy here.
+
+### The `--print-client-cert` flag
+
+By default, `kubectl-incluster` prints the "minified" kube config (i.e., just
+the kube config for the current cluster if you are running out-of-cluster).
+
+For example:
+
+```
+$ kubectl incluster
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJkekNDQVIyZ0F3SUJBZ0lCQURBS0JnZ3Foa2pPUFFRREFqQWpNU0V3SHdZRFZRUUREQmhyTTNNdGMyVnkKZG1WeUxXTmhRREUyTWpneE5UTXpNVGt3SGhjTk1qRXdPREExTURnME9ETTVXaGNOTXpFd09EQXpNRGcwT0RNNQpXakFqTVNFd0h3WURWUVFEREJock0zTXRjMlZ5ZG1WeUxXTmhRREUyTWpneE5UTXpNVGt3V1RBVEJnY3Foa2pPClBRSUJCZ2dxaGtqT1BRTUJCd05DQUFUbkFnZ3VDQ3p2UTJXemFZbFlRQ1BoaVNEcFcrQUNXUytLQ1ZmdFZjUlcKY2ZXdmxqZ3pnMGlWcXdaYlBoVk1xYitzRktPeXRnd1M0QnNPZXV5MlZEQ1hvMEl3UURBT0JnTlZIUThCQWY4RQpCQU1DQXFRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVXNjUWVad3JKNlpkbFpzWkxGK2tpCnhRSVhTNDh3Q2dZSUtvWkl6ajBFQXdJRFNBQXdSUUlnUWpyOWo0anNFWmlZZHNjU2RBSktreStlOWxjUTZYRncKejVOQkF2SUNuMEVDSVFDdVJIMGhtbmNJcnIveGNjMDkwZEFiN0c2V0d5T2R3M2w1ZXFGeFlQWnJkUT09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    server: https://0.0.0.0:43519
+  name: kubectl-incluster
+contexts:
+- context:
+    cluster: kubectl-incluster
+    user: kubectl-incluster
+  name: kubectl-incluster
+current-context: kubectl-incluster
+kind: Config
+preferences: {}
+users:
+- name: kubectl-incluster
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJrVENDQVRlZ0F3SUJBZ0lJWWtuQ3g1UWRrL2t3Q2dZSUtvWkl6ajBFQXdJd0l6RWhNQjhHQTFVRUF3d1kKYXpOekxXTnNhV1Z1ZEMxallVQXhOakk0TVRVek16RTVNQjRYRFRJeE1EZ3dOVEE0TkRnek9Wb1hEVEl5TURndwpOVEE0TkRnek9Wb3dNREVYTUJVR0ExVUVDaE1PYzNsemRHVnRPbTFoYzNSbGNuTXhGVEFUQmdOVkJBTVRESE41CmMzUmxiVHBoWkcxcGJqQlpNQk1HQnlxR1NNNDlBZ0VHQ0NxR1NNNDlBd0VIQTBJQUJCWWlBUUZtZStpNHZiRjUKM3JNK29XNUp2dmliSnJSVFZBcUlPeHpIQjR0cTI0dm02QnpVbVJEbUJDbHdOKythYXdmTW9iRnJkQ25KdnExMgo3RE9sVWlHalNEQkdNQTRHQTFVZER3RUIvd1FFQXdJRm9EQVRCZ05WSFNVRUREQUtCZ2dyQmdFRkJRY0RBakFmCkJnTlZIU01FR0RBV2dCVElhT1JUQ21rV29WM21od0ttZXFhempDN1d6REFLQmdncWhrak9QUVFEQWdOSUFEQkYKQWlFQTRwY0x5ZzFFQy85UVhGNk91cGpNRXdIVlhNUFN1R0RPRGRNRDFkY2JzNE1DSUM4ODFkd0pBSXBnSm1BTgpIbmp3UVBDTGFWVUgzYWpLNmNYZEl3czIxM0VRCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0KLS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJlRENDQVIyZ0F3SUJBZ0lCQURBS0JnZ3Foa2pPUFFRREFqQWpNU0V3SHdZRFZRUUREQmhyTTNNdFkyeHAKWlc1MExXTmhRREUyTWpneE5UTXpNVGt3SGhjTk1qRXdPREExTURnME9ETTVXaGNOTXpFd09EQXpNRGcwT0RNNQpXakFqTVNFd0h3WURWUVFEREJock0zTXRZMnhwWlc1MExXTmhRREUyTWpneE5UTXpNVGt3V1RBVEJnY3Foa2pPClBRSUJCZ2dxaGtqT1BRTUJCd05DQUFRclltNkFFbEdBeGZ2bENiY2hwUkdQbFFPbEZ6LytJUzRZMFV2REhMVE0KQ05WbzdVRnJkL3had2IvVlU5aVFIRWRSMG1ZcVVWL3Z4aWd4YlN0elk5MzFvMEl3UURBT0JnTlZIUThCQWY4RQpCQU1DQXFRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVXlHamtVd3BwRnFGZDVvY0NwbnFtCnM0d3Uxc3d3Q2dZSUtvWkl6ajBFQXdJRFNRQXdSZ0loQU5ocVgrTEhIOGsrRGlMdXllWEt5N1hpNDg0UWlkeUQKM25KRjhGeEsyL2FzQWlFQXZmQjhIcmk4NWpGVmhScmc2VWQ4cFMyazZjclhUbjYvYVF6MzFuVU4wRm89Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    client-key-data: LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUlIN2hsVTBmSkptL0drWis0cnlNQlVpYkFsVnVwSlFHdEF6emVqUlJTczlvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFRmlJQkFXWjc2TGk5c1huZXN6Nmhia20rK0pzbXRGTlVDb2c3SE1jSGkycmJpK2JvSE5TWgpFT1lFS1hBMzc1cHJCOHloc1d0MEtjbStyWGJzTTZWU0lRPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=
+```
+
+If you would prefer to get the chain of certificates in PEM format (including
+the private key, displayed first), you can use the `--print-client-cert` flag:
+
+```
+$ kubectl incluster --print-client-cert
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIIH7hlU0fJJm/GkZ+4ryMBUibAlVupJQGtAzzejRRSs9oAoGCCqGSM49
+AwEHoUQDQgAEFiIBAWZ76Li9sXnesz6hbkm++JsmtFNUCog7HMcHi2rbi+boHNSZ
+EOYEKXA375prB8yhsWt0Kcm+rXbsM6VSIQ==
+-----END EC PRIVATE KEY-----
+-----BEGIN CERTIFICATE-----
+MIIBkTCCATegAwIBAgIIYknCx5Qdk/kwCgYIKoZIzj0EAwIwIzEhMB8GA1UEAwwY
+azNzLWNsaWVudC1jYUAxNjI4MTUzMzE5MB4XDTIxMDgwNTA4NDgzOVoXDTIyMDgw
+NTA4NDgzOVowMDEXMBUGA1UEChMOc3lzdGVtOm1hc3RlcnMxFTATBgNVBAMTDHN5
+c3RlbTphZG1pbjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBYiAQFme+i4vbF5
+3rM+oW5JvvibJrRTVAqIOxzHB4tq24vm6BzUmRDmBClwN++aawfMobFrdCnJvq12
+7DOlUiGjSDBGMA4GA1UdDwEB/wQEAwIFoDATBgNVHSUEDDAKBggrBgEFBQcDAjAf
+BgNVHSMEGDAWgBTIaORTCmkWoV3mhwKmeqazjC7WzDAKBggqhkjOPQQDAgNIADBF
+AiEA4pcLyg1EC/9QXF6OupjMEwHVXMPSuGDODdMD1dcbs4MCIC881dwJAIpgJmAN
+HnjwQPCLaVUH3ajK6cXdIws213EQ
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIBeDCCAR2gAwIBAgIBADAKBggqhkjOPQQDAjAjMSEwHwYDVQQDDBhrM3MtY2xp
+ZW50LWNhQDE2MjgxNTMzMTkwHhcNMjEwODA1MDg0ODM5WhcNMzEwODAzMDg0ODM5
+WjAjMSEwHwYDVQQDDBhrM3MtY2xpZW50LWNhQDE2MjgxNTMzMTkwWTATBgcqhkjO
+PQIBBggqhkjOPQMBBwNCAAQrYm6AElGAxfvlCbchpRGPlQOlFz/+IS4Y0UvDHLTM
+CNVo7UFrd/xZwb/VU9iQHEdR0mYqUV/vxigxbStzY931o0IwQDAOBgNVHQ8BAf8E
+BAMCAqQwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUyGjkUwppFqFd5ocCpnqm
+s4wu1swwCgYIKoZIzj0EAwIDSQAwRgIhANhqX+LHH8k+DiLuyeXKy7Xi484QidyD
+3nJF8FxK2/asAiEAvfB8Hri85jFVhRrg6Ud8pS2k6crXTn6/aQz31nUN0Fo=
+-----END CERTIFICATE-----
+```
