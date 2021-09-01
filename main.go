@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
+	"strings"
 
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -25,6 +30,16 @@ var (
 	replacecacertD  = flag.String("replace-cacert", "", "Deprecated, please use --replace-ca-cert instead.")
 	printClientCert = flag.Bool("print-client-cert", false, "Instead of printing the kube config, print the content of the kube config's client-certificate-data followed by the client-key-data.")
 	printCACert     = flag.Bool("print-ca-cert", false, "Instead of printing a kubeconfig, print the content of the kube config's certificate-authority-data.")
+
+	serviceaccount = flag.String("serviceaccount", "", strings.ReplaceAll(
+		`Instead of using the current pod's /var/run/secrets (when in cluster)
+		or the local kubeconfig (when out-of-cluster), you can use this flag to
+		use the token and ca.crt from a given service account, for example
+		'namespace-1/serviceaccount-1'. Useful when you want to force using a
+		token (only available using service accounts) over client certificates
+		provided in the kubeconfig, which is useful whenusing mitmproxy since
+		the token is passed as a header (HTTP) instead of a client certificate
+		(TLS).`, "\t", ""))
 )
 
 func main() {
@@ -48,6 +63,21 @@ func main() {
 	if err != nil {
 		logutil.Errorf("loading: %s", err)
 		os.Exit(1)
+	}
+
+	if *serviceaccount != "" {
+		cacrt, token, err := getServiceAccount(c)
+		if err != nil {
+			logutil.Errorf("while processing flag --serviceaccount: %s", err)
+			os.Exit(1)
+		}
+
+		c.TLSClientConfig.CAData = []byte(cacrt)
+		c.BearerToken = token
+		c.KeyData = nil
+		c.KeyFile = ""
+		c.CertData = nil
+		c.CertFile = ""
 	}
 
 	switch {
@@ -78,6 +108,59 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func getServiceAccount(c *rest.Config) (cacrt []byte, token string, _ error) {
+	splits := strings.Split(*serviceaccount, "/")
+	if len(splits) != 2 {
+		return nil, "", fmt.Errorf("--serviceaccount: expected value of the form 'namespace/serviceaccount', got: %s", *serviceaccount)
+	}
+
+	namespace := splits[0]
+	name := splits[1]
+
+	cl, err := kubernetes.NewForConfig(c)
+	if err != nil {
+		return nil, "", fmt.Errorf("while processing flag --serviceaccount: creating Kubernetes client: %s", err)
+	}
+
+	serviceaccount, err := cl.CoreV1().ServiceAccounts(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return nil, "", fmt.Errorf("getting serviceaccount %s in namespace %s: %v", name, namespace, err)
+	}
+
+	if len(serviceaccount.Secrets) < 1 {
+		return nil, "", fmt.Errorf("serviceaccount %s has no secrets", serviceaccount.GetName())
+	}
+
+	var secret *v1.Secret
+	for _, secretRef := range serviceaccount.Secrets {
+		secret, err = cl.CoreV1().Secrets(namespace).Get(context.TODO(), secretRef.Name, metav1.GetOptions{})
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to get the secret %s in namespace %s: %v", secretRef.Name, namespace, err)
+		}
+
+		if secret.Type == v1.SecretTypeServiceAccountToken {
+			break
+		}
+	}
+
+	if secret == nil {
+		return nil, "", fmt.Errorf("serviceaccount %s has no secret type %s", name, v1.SecretTypeServiceAccountToken)
+	}
+
+	var ok bool
+	cacrt, ok = secret.Data["ca.crt"]
+	if !ok {
+		return nil, "", fmt.Errorf("key 'ca.crt' not found in %s", secret.GetName())
+	}
+
+	tokenBytes, ok := secret.Data["token"]
+	if !ok {
+		return nil, "", fmt.Errorf("key 'token' not found in %s", secret.GetName())
+	}
+
+	return cacrt, string(tokenBytes), nil
 }
 
 // The PEM-encoded private key is displayed first.
