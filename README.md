@@ -350,4 +350,29 @@ s4wu1swwCgYIKoZIzj0EAwIDSQAwRgIhANhqX+LHH8k+DiLuyeXKy7Xi484QidyD
   
   Note that your Go programs won't have this issue and you can use a temporary named pipe for them.
   
+- If you notice that your Go binary does not seem to take into account the `HTTPS_PROXY=:9090` environment variable,
+  it may be due to your cluster hostname being `localhost` or `127.0.0.1`. I documented this Go limitation in the blog
+  post [What to do when Go ignores HTTP_PROXY for 127.0.0.1](https://maelvls.dev/go-ignores-proxy-localhost/).
+  For example, let us use `kubectl`. Let us imagine that the current Kubernetes context targets a `kind` or `k3d`
+  cluster. Then, you should see:
 
+  ```sh
+  $ kubectl incluster | grep server
+    server: https://127.0.0.1:33203
+  ```
+  
+  The `HTTPS_PROXY` variable won't be taken into account:
+  ```sh
+  $ HTTPS_PROXY=:9090 kubectl get nodes --kubeconfig=<(kubectl incluster --replace-ca-cert ~/.mitmproxy/mitmproxy-ca-cert.pem)
+  Unable to connect to the server: x509: certificate signed by unknown authority
+  ```
+  
+  You will have to use another trick:
+  
+  ```sh
+  grep "^127.0.0.1.*me$" /etc/hosts || sudo tee -a /etc/hosts <<<"127.0.0.1 me"
+  HTTPS_PROXY=:9090 kubectl get nodes --kubeconfig=<(kubectl incluster --replace-ca-cert ~/.mitmproxy/mitmproxy-ca-cert.pem | sed "s|127.0.0.1|me|")
+  ```
+  
+  This time, kubectl should be using the proxy.
+  
