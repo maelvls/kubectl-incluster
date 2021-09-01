@@ -332,3 +332,22 @@ s4wu1swwCgYIKoZIzj0EAwIDSQAwRgIhANhqX+LHH8k+DiLuyeXKy7Xi484QidyD
 3nJF8FxK2/asAiEAvfB8Hri85jFVhRrg6Ud8pS2k6crXTn6/aQz31nUN0Fo=
 -----END CERTIFICATE-----
 ```
+
+## Gotchas
+
+- `mitmproxy`, when using the flag `--set client_certs`, needs to be able to read the client certificates file multiple times, which means that using a "temporary named pipe":
+
+  ```sh
+  mitmproxy --set client_certs=<(kubectl incluster --print-client-cert)
+  #                           ^^^ 
+  ```
+  
+  Instead, you will have to store the client certs in a temporary file that can be read multiple times:
+   
+  ```sh
+  mitmproxy --set client_certs=$(kubectl incluster --print-client-cert >/tmp/client-certs && echo /tmp/client-certs)
+  ```
+  
+  Note that your Go programs won't have this issue and you can use a temporary named pipe for them.
+  
+
