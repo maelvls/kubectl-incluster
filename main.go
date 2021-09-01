@@ -22,6 +22,7 @@ var (
 	root            = flag.String("root", os.Getenv("CONTAINER_ROOT"), "The container root. You can also set CONTAINER_ROOT instead. If TELEPRESENCE_ROOT is set, it will default to that.")
 	deprecated      = flag.Bool("embed", false, "Deprecated since this is now the default behavior. Embeds the token and ca.crt data inside the kubeconfig instead of using file paths.")
 	replacecacert   = flag.String("replace-ca-cert", "", "Instead of using the cacert provided in /var/run/secrets or in the kube config, use this one. Useful when using a proxy like mitmproxy.")
+	replacecacertD  = flag.String("replace-cacert", "", "Deprecated, please use --replace-ca-cert instead.")
 	printClientCert = flag.Bool("print-client-cert", false, "Instead of printing the kube config, print the content of the kube config's client-certificate-data followed by the client-key-data.")
 	printCACert     = flag.Bool("print-ca-cert", false, "Instead of printing a kubeconfig, print the content of the kube config's certificate-authority-data.")
 )
@@ -31,6 +32,11 @@ func main() {
 
 	if *deprecated {
 		logutil.Infof("--embed is deprecated since it is now turned on by default")
+	}
+
+	if *replacecacertD != "" {
+		logutil.Infof("--replace-cacert is deprecated, please use --replace-ca-cert instead")
+		*replacecacert = *replacecacertD
 	}
 
 	// Defaults to TELEPRESENCE_ROOT only if --root is not passed.
