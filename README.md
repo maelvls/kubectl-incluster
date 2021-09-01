@@ -376,3 +376,13 @@ s4wu1swwCgYIKoZIzj0EAwIDSQAwRgIhANhqX+LHH8k+DiLuyeXKy7Xi484QidyD
   
   This time, kubectl should be using the proxy.
   
+- Trusting your mitmproxy CA cert on Linux:
+
+  ```sh
+  sudo cp ~/.mitmproxy/mitmproxy-ca-cert.pem /usr/share/ca-certificates/mitmproxy/mitmproxy-ca-cert.crt
+  grep mitmproxy/mitmproxy-ca-cert.crt /etc/ca-certificates.conf \
+    || sudo tee -a /etc/ca-certificates.conf <<<mitmproxy/mitmproxy-ca-cert.crt
+  sudo update-ca-certificates
+  ```
+
+
