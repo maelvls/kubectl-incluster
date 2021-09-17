@@ -14,10 +14,12 @@ kubeconfig that you can use somewhere else.
 
 **Content:**
 
-- [Use-case: telepresence + mitmproxy for debugging cert-manager](#use-case-telepresence--mitmproxy-for-debugging-cert-manager)
-- [Use-case: telepresence + mitmproxy for debugging the preflight agent](#use-case-telepresence--mitmproxy-for-debugging-the-preflight-agent)
-- [Use-case: mitmproxy inside the cluster (as opposed to using telepresence)](#use-case-mitmproxy-inside-the-cluster-as-opposed-to-using-telepresence)
+- [Use-case: telepresence v1 + mitmproxy for debugging cert-manager](#use-case-telepresence-v1--mitmproxy-for-debugging-cert-manager)
+  - [Optional: read the Let's Encrypt `jose+json` payloads](#optional-read-the-lets-encrypt-josejson-payloads)
+- [Use-case: telepresence v1 + mitmproxy for debugging the preflight agent](#use-case-telepresence-v1--mitmproxy-for-debugging-the-preflight-agent)
+- [Use-case: mitmproxy inside the cluster (as opposed to using telepresence v1)](#use-case-mitmproxy-inside-the-cluster-as-opposed-to-using-telepresence-v1)
 - [Use-case: mitmproxy without kubectl-incluster](#use-case-mitmproxy-without-kubectl-incluster)
+- [Use-case: telepresence v2, cert-manager and `runAsNonRoot: false`](#use-case-telepresence-v2-cert-manager-and-runasnonroot-false)
   - [The `--print-client-cert` flag](#the---print-client-cert-flag)
 - [Gotchas](#gotchas)
 
@@ -81,6 +83,44 @@ HTTPS_PROXY=localhost:9090 go run ./cmd/controller --leader-elect=false --kubeco
 And TADA! We see all the requests made by our controller:
 
 <img alt="An mitmproxy screenshot when debugging cert-manager-controller. Screenshot stored in the issue https://github.com/maelvls/kubectl-incluster/issues/1" src="https://user-images.githubusercontent.com/2195781/100645025-64f89880-333c-11eb-9a3f-b6aa8cde497d.png">
+
+### Optional: read the Let's Encrypt `jose+json` payloads
+
+In mitmproxy, it is hard to read the JSON payloads sent by the ACME server since
+they are base64 encoded:
+
+```json
+{
+  "protected": "eyJhbGciOiJSUzI1Ni...E1MzY1Mjg1MCJ9",
+  "payload": "eyJjc3IiOiJNSUlDblRDQ0FZ...EU3lHQ3BjLTlfanVBIn0",
+  "signature": "qqYGqZDSSUwuLLxm6-...nygkb5S8igKPrw"
+}
+```
+
+You can use the `josejson.py` script to decode the payload and protected fields
+"inline":
+
+```
+curl -L https://raw.githubusercontent.com/maelvls/kubectl-incluster/main/josejson.py >/tmp/josejson.py
+mitmproxy -p 9090 -s /tmp/josejson.py
+```
+
+And now you can see the payload and protected fields "inline":
+
+```json
+{
+  "payload": {
+    "csr": "MIICnTCCAYUCAQAwADCCAS...duroowkXh3tqgVFDSyGCpc-9_juA"
+  },
+  "protected": {
+    "alg": "RS256",
+    "kid": "https://acme-v02.api.letsencrypt.org/acme/acct/204416270",
+    "nonce": "01017mM9r6R_TpKL-5zxAmMF5JmTCBI-v6AsLlGedj3pD1E",
+    "url": "https://acme-v02.api.letsencrypt.org/acme/finalize/204416270/25153652850"
+  },
+  "signature": "qqYGqZDSSUwuLLxm6-...nygkb5S8igKPrw"
+}
+```
 
 ## Use-case: telepresence v1 + mitmproxy for debugging the preflight agent
 
@@ -306,7 +346,6 @@ intercepted
     Intercepting      : all TCP connections
 mvalais@aorus:~/code/cert-manager$
 ```
-
 
 ### The `--print-client-cert` flag
 
