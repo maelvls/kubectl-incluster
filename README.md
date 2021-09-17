@@ -21,7 +21,7 @@ kubeconfig that you can use somewhere else.
   - [The `--print-client-cert` flag](#the---print-client-cert-flag)
 - [Gotchas](#gotchas)
 
-## Use-case: telepresence + mitmproxy for debugging cert-manager
+## Use-case: telepresence v1 + mitmproxy for debugging cert-manager
 
 In order to inspect the egress traffic coming from a Kubernetes controller
 (here, [cert-manager](https://github.com/jetstack/cert-manager)), I want to
@@ -82,7 +82,7 @@ And TADA! We see all the requests made by our controller:
 
 <img alt="An mitmproxy screenshot when debugging cert-manager-controller. Screenshot stored in the issue https://github.com/maelvls/kubectl-incluster/issues/1" src="https://user-images.githubusercontent.com/2195781/100645025-64f89880-333c-11eb-9a3f-b6aa8cde497d.png">
 
-## Use-case: telepresence + mitmproxy for debugging the preflight agent
+## Use-case: telepresence v1 + mitmproxy for debugging the preflight agent
 
 The preflight agent is a binary that runs in your Kubernetes cluster and
 reports information about certificates to the
@@ -141,7 +141,7 @@ You will see:
 
 <img alt="An mitmproxy screenshot when debugging the preflight agent that reports to https://platform.jetstack.io. Screenshot stored in the issue https://github.com/maelvls/kubectl-incluster/issues/1" src="https://user-images.githubusercontent.com/2195781/110499573-aa292500-80f8-11eb-8570-c90b56475f27.png">
 
-## Use-case: mitmproxy inside the cluster (as opposed to using telepresence)
+## Use-case: mitmproxy inside the cluster (as opposed to using telepresence v1)
 
 First, we need to have an instance of mitmproxy running:
 
@@ -240,7 +240,7 @@ Then, let us make sure our system trusts Mitmproxy's root CA:
 sudo mkdir -p /usr/share/ca-certificates/mitmproxy
 sudo cp ~/.mitmproxy/mitmproxy-ca-cert.pem /usr/share/ca-certificates/mitmproxy/mitmproxy-ca-cert.crt
 grep mitmproxy/mitmproxy-ca-cert.crt /etc/ca-certificates.conf \
-  || sudo tee --append /etc/ca-certificates.conf <<<mitmproxy/mitmproxy-ca-cert.crt
+  || sudo tee --append /etc/ca-certificates.conf <<<"mitmproxy/mitmproxy-ca-cert.crt"
 sudo update-ca-certificates
 
 # macOS
@@ -270,6 +270,43 @@ HTTPS_PROXY=:9090 KUBECONFIG=<(kubectl config view --minify --flatten \
 
 > 🔰 The command `kubectl config view --minify` prints the kube config for
 > the current context, which comes in very handy here.
+
+## Use-case: telepresence v2, cert-manager and `runAsNonRoot: false`
+
+As of 17 Sept 2021, Telepresence v2 does not support deployments configured with `runAsNonRoot: false` as per the issue [#875](https://github.com/telepresenceio/telepresence/issues/875). cert-manager, by default, uses `runAsNonRoot: false`, and you will see that telepresence v2 hangs forever:
+
+```sh
+$ telepresence intercept cert-manager -n cert-manager -- bash
+Launching Telepresence Root Daemon
+Need root privileges to run: /home/mvalais/bin/telepresence daemon-foreground /home/mvalais/.cache/telepresence/logs /home/mvalais/.config/telepresence ''
+[sudo] password for mvalais:
+Launching Telepresence User Daemon
+Connected to context k3d-boring (https://0.0.0.0:39767)
+# ❌ Hangs forever.
+```
+
+To work around this, you need to change the securityContext of your cert-manager:
+
+```sh
+kubectl patch deploy cert-manager -n cert-manager --patch 'spec: {template: {spec: {securityContext: {runAsNonRoot: false}}}}'
+```
+
+This time, telepresence v2 should work:
+
+```
+$ telepresence intercept cert-manager -n cert-manager -- bash
+telepresence intercept cert-manager -n cert-manager -- bash
+Using Deployment cert-manager
+intercepted
+    Intercept name    : cert-manager-cert-manager
+    State             : ACTIVE
+    Workload kind     : Deployment
+    Destination       : 127.0.0.1:8080
+    Volume Mount Point: /tmp/telfs-695026645
+    Intercepting      : all TCP connections
+mvalais@aorus:~/code/cert-manager$
+```
+
 
 ### The `--print-client-cert` flag
 
