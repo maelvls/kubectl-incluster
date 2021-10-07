@@ -21,6 +21,7 @@ kubeconfig that you can use somewhere else.
 - [Use-case: mitmproxy without kubectl-incluster](#use-case-mitmproxy-without-kubectl-incluster)
 - [Use-case: telepresence v2, cert-manager and `runAsNonRoot: false`](#use-case-telepresence-v2-cert-manager-and-runasnonroot-false)
   - [The `--print-client-cert` flag](#the---print-client-cert-flag)
+- [Use-case: mitmproxy an admission webhook](#use-case-mitmproxy-an-admission-webhook)
 - [Gotchas](#gotchas)
 
 ## Use-case: telepresence v1 + mitmproxy for debugging cert-manager
@@ -408,6 +409,79 @@ BAMCAqQwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUyGjkUwppFqFd5ocCpnqm
 s4wu1swwCgYIKoZIzj0EAwIDSQAwRgIhANhqX+LHH8k+DiLuyeXKy7Xi484QidyD
 3nJF8FxK2/asAiEAvfB8Hri85jFVhRrg6Ud8pS2k6crXTn6/aQz31nUN0Fo=
 -----END CERTIFICATE-----
+```
+
+## Use-case: mitmproxy an admission webhook
+
+Unlike all the previous use-cases, we will be using mitmproxy in "reverse proxy"
+mode:
+
+```
++------------------+                  +------------------+                  +--------------------+
+|                  |                  |                  |                  |                    |
+|                  |----------------->|                  |----------------->|                    |
+|    apiserver     |                  |    mitmproxy     |                  |cert-manager-webhook|
+|                  |                  |      :8080       |                  |       :8081        |
+|                  |                  |                  |                  |                    |
++------------------+                  +------------------+                  +--------------------+
+                                         reverse proxy
+```
+
+We want to be able to see what the apiserver is sending to cert-manager webhook.
+
+To do that, we will be running the webhook out-of-cluster to make it easier when
+running mitmproxy. We could be using `kubetap` that does a similar job, but it
+does not support setting your own CA certificate to be served, meaning that we
+can't have a way to make the apiserver trust the webhook.
+
+```sh
+$ telepresence intercept cert-manager-webhook -n cert-manager -- bash
+Using Deployment cert-manager-webhook
+intercepted
+    Intercept name    : cert-manager-webhook-cert-manager
+    State             : ACTIVE
+    Workload kind     : Deployment
+    Destination       : 127.0.0.1:8080
+    Volume Mount Point: /tmp/telfs-584691868
+    Intercepting      : all TCP connections
+```
+
+Anything that hits `cert-manager-webhook.cert-manager.svc:443` will be forwarded
+to the host on `127.0.0.1:8080`.
+
+We now need to force the apiserver to trust mitmproxy:
+
+```sh
+kubectl apply -f- <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cert-manager-webhook-ca
+  namespace: cert-manager
+data:
+  ca.crt: "$(cat ~/.mitmproxy/mitmproxy-ca-cert.pem | base64 -w0)"
+  tls.crt: "$(cat ~/.mitmproxy/mitmproxy-ca-cert.pem | base64 -w0)"
+  tls.key: "$(cat ~/.mitmproxy/mitmproxy-ca.pem | base64 -w0)"
+EOF
+```
+
+cert-manager-cainjector will then take care of stuffing the above `ca.crt` into
+the `caBundle` in all cert-manager CRDs so that the apiserver knows how to
+verify the TLS certificate handled by mitmproxy.
+
+Now, let's run mitmproxy on port 8080:
+
+```
+mitmproxy -p 8080 --mode reverse:https://localhost:8081 --ssl-insecure
+```
+
+Finally, we can run the webhook on port 8081:
+
+```
+go run ./cmd/webhook/ webhook --v=2 --secure-port=8081 --dynamic-serving-ca-secret-namespace=cert-manager \
+  --dynamic-serving-ca-secret-name=cert-manager-webhook-ca \
+  --dynamic-serving-dns-names=cert-manager-webhook,cert-manager-webhook.cert-manager,cert-manager-webhook.cert-manager.svc \
+  --kubeconfig=$(kubectl incluster >/tmp/in.pem && echo /tmp/in.pem)
 ```
 
 ## Gotchas
