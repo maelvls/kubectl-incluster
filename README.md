@@ -536,3 +536,12 @@ go run ./cmd/webhook/ webhook --v=2 --secure-port=8081 --dynamic-serving-ca-secr
     || sudo tee -a /etc/ca-certificates.conf <<<mitmproxy/mitmproxy-ca-cert.crt
   sudo update-ca-certificates
   ```
+  
+### The `$TELEPRESENCE_ROOT` stays empty on Linux
+  
+As per https://github.com/telepresenceio/telepresence/issues/1944, the workaround is to run:
+
+```sh
+sudo tee -a  /etc/fuse.conf <<<user_allow_other
+```
+
