@@ -32,9 +32,28 @@ be able to use mitmproxy through a Telepresence `--run-shell` session. For
 example, let's imagine you have a cert-manager deployment already running
 and that you want to see what requests it makes.
 
-Let's first start mitmproxy. We use [watch-stream.py](/watch-stream.py), a
-script that makes sure the streaming GET requests are properly streamed by
-mitmproxy:
+> ⚠️ Telepresence 1 (written in Python) has been "superseeded" by Telepresence 2 (written in Go).
+> This use-case focuses on Telepresence 1. To see the same use-case using Telepresence 2,
+> scroll down. Note that Telepresence 1 works better in certain scenarios (e.g., Telepresence 1
+> supports replacing Deployments that have `runAsNonRoot: false` set on them).
+
+First, install Telepresence 1. To install it on Ubuntu:
+
+```sh
+curl -s https://packagecloud.io/install/repositories/datawireio/telepresence/script.deb.sh | sudo bash
+sudo apt install --no-install-recommends telepresence
+```
+
+(see [macOS instructions](https://www.telepresence.io/docs/v1/reference/install/))
+
+Then, install mitmproxy on both Linux and macOS:
+
+```sh
+brew install mitmproxy
+```
+
+The next step is to start mitmproxy. We will be using [watch-stream.py](/watch-stream.py),
+a script that makes sure the streaming GET requests are properly streamed by mitmproxy:
 
 ```sh
 curl -L https://raw.githubusercontent.com/maelvls/kubectl-incluster/main/watch-stream.py >/tmp/watch-stream.py
