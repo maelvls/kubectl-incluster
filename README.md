@@ -514,7 +514,7 @@ go run ./cmd/webhook/ webhook --v=2 --secure-port=8081 --dynamic-serving-ca-secr
 The `--help` output of `kubectl-incluster` is below:
 
 ```
-Usage of /tmp/go-build651200515/b001/exe/kubectl-incluster:
+Usage of kubectl-incluster:
   -context string
     	The name of the kubeconfig context to use.
   -kubeconfig string
