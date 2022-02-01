@@ -76,12 +76,8 @@ mitmproxy -p 9090 --ssl-insecure -s /tmp/watch-stream.py --set client_certs=<(ku
 Let us now install `kubectl-incluser`:
 
 ```sh
-(cd && GO111MODULE=on go get github.com/maelvls/kubectl-incluster@latest)
+go install github.com/maelvls/kubectl-incluster@latest
 ```
-
-> Note: the reason I use the `(cd && ...)` notation is detailed in [this
-> blog
-> post](https://maelvls.dev/go111module-everywhere/#the-pitfall-of-gomod-being-silently-updated).
 
 Now, let's run cert-manager locally inside a Telepresence shell:
 
