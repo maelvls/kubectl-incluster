@@ -22,8 +22,8 @@ import (
 )
 
 var (
-	kubeconfig      = flag.String("kubeconfig", "", "")
-	kubecontext     = flag.String("context", "", "")
+	kubeconfig      = flag.String("kubeconfig", "", "Path to the kubeconfig file to use.")
+	kubecontext     = flag.String("context", "", "The name of the kubeconfig context to use.")
 	root            = flag.String("root", os.Getenv("CONTAINER_ROOT"), "The container root. You can also set CONTAINER_ROOT instead. If TELEPRESENCE_ROOT is set, it will default to that.")
 	deprecated      = flag.Bool("embed", false, "Deprecated since this is now the default behavior. Embeds the token and ca.crt data inside the kubeconfig instead of using file paths.")
 	replacecacert   = flag.String("replace-ca-cert", "", "Instead of using the cacert provided in /var/run/secrets or in the kube config, use this one. Useful when using a proxy like mitmproxy.")
