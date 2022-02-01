@@ -516,35 +516,35 @@ The `--help` output of `kubectl-incluster` is below:
 ```
 Usage of kubectl-incluster:
   -context string
-    	The name of the kubeconfig context to use.
+      The name of the kubeconfig context to use.
   -kubeconfig string
-    	Path to the kubeconfig file to use.
+      Path to the kubeconfig file to use.
   -embed
-    	Deprecated since this is now the default behavior. Embeds the token and
+      Deprecated since this is now the default behavior. Embeds the token and
       ca.crt data inside the kubeconfig instead of using file paths.
   -print-ca-cert
-    	Instead of printing a kubeconfig, print the content of the kube config's
+      Instead of printing a kubeconfig, print the content of the kube config's
       certificate-authority-data.
   -print-client-cert
-    	Instead of printing the kube config, print the content of the kube
+      Instead of printing the kube config, print the content of the kube
       config's client-certificate-data followed by the client-key-data.
   -replace-ca-cert string
-    	Instead of using the cacert provided in /var/run/secrets or in the kube
+      Instead of using the cacert provided in /var/run/secrets or in the kube
       config, use this one. Useful when using a proxy like mitmproxy.
   -replace-cacert string
-    	Deprecated, please use --replace-ca-cert instead.
+      Deprecated, please use --replace-ca-cert instead.
   -root string
-    	The container root. You can also set CONTAINER_ROOT instead. If
+      The container root. You can also set CONTAINER_ROOT instead. If
       TELEPRESENCE_ROOT is set, it will default to that.
   -serviceaccount string
-    	Instead of using the current pod's /var/run/secrets (when in cluster)
-    	or the local kubeconfig (when out-of-cluster), you can use this flag to
-    	use the token and ca.crt from a given service account, for example
-    	'namespace-1/serviceaccount-1'. Useful when you want to force using a
-    	token (only available using service accounts) over client certificates
-    	provided in the kubeconfig, which is useful whenusing mitmproxy since
-    	the token is passed as a header (HTTP) instead of a client certificate
-    	(TLS).
+      Instead of using the current pod's /var/run/secrets (when in cluster)
+      or the local kubeconfig (when out-of-cluster), you can use this flag to
+      use the token and ca.crt from a given service account, for example
+      'namespace-1/serviceaccount-1'. Useful when you want to force using a
+      token (only available using service accounts) over client certificates
+      provided in the kubeconfig, which is useful whenusing mitmproxy since
+      the token is passed as a header (HTTP) instead of a client certificate
+      (TLS).
 ```
 
 ### The `--print-client-cert` flag
