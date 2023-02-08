@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	authenticationv1 "k8s.io/api/authentication/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -66,13 +67,12 @@ func main() {
 	}
 
 	if *serviceaccount != "" {
-		cacrt, token, err := getServiceAccount(c)
+		token, err := getServiceAccount(c)
 		if err != nil {
 			logutil.Errorf("while processing flag --serviceaccount: %s", err)
 			os.Exit(1)
 		}
 
-		c.TLSClientConfig.CAData = []byte(cacrt)
 		c.BearerToken = token
 		c.KeyData = nil
 		c.KeyFile = ""
@@ -110,10 +110,10 @@ func main() {
 	}
 }
 
-func getServiceAccount(c *rest.Config) (cacrt []byte, token string, _ error) {
+func getServiceAccount(c *rest.Config) (token string, _ error) {
 	splits := strings.Split(*serviceaccount, "/")
 	if len(splits) != 2 {
-		return nil, "", fmt.Errorf("--serviceaccount: expected value of the form 'namespace/serviceaccount', got: %s", *serviceaccount)
+		return "", fmt.Errorf("--serviceaccount: expected value of the form 'namespace/serviceaccount', got: %s", *serviceaccount)
 	}
 
 	namespace := splits[0]
@@ -121,23 +121,31 @@ func getServiceAccount(c *rest.Config) (cacrt []byte, token string, _ error) {
 
 	cl, err := kubernetes.NewForConfig(c)
 	if err != nil {
-		return nil, "", fmt.Errorf("while processing flag --serviceaccount: creating Kubernetes client: %s", err)
+		return "", fmt.Errorf("while processing flag --serviceaccount: creating Kubernetes client: %s", err)
 	}
 
 	serviceaccount, err := cl.CoreV1().ServiceAccounts(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
-		return nil, "", fmt.Errorf("getting serviceaccount %s in namespace %s: %v", name, namespace, err)
+		return "", fmt.Errorf("getting serviceaccount %s in namespace %s: %v", name, namespace, err)
 	}
 
+	// By default, we try to use the default service account token. Since
+	// Kubernetes 1.20, the default service account token is not created, so we
+	// try to generate a token instead.
 	if len(serviceaccount.Secrets) < 1 {
-		return nil, "", fmt.Errorf("serviceaccount %s has no secrets", serviceaccount.GetName())
+		logutil.Debugf("serviceaccount %s has no default service account secret, now trying to generate a token", serviceaccount.GetName())
+		token, err := cl.CoreV1().ServiceAccounts(namespace).CreateToken(context.TODO(), name, &authenticationv1.TokenRequest{}, metav1.CreateOptions{})
+		if err != nil {
+			return "", fmt.Errorf("failed to generate a token for serviceaccount %s in namespace %s: %v", name, namespace, err)
+		}
+		return token.Status.Token, nil
 	}
 
 	var secret *v1.Secret
 	for _, secretRef := range serviceaccount.Secrets {
 		secret, err = cl.CoreV1().Secrets(namespace).Get(context.TODO(), secretRef.Name, metav1.GetOptions{})
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to get the secret %s in namespace %s: %v", secretRef.Name, namespace, err)
+			return "", fmt.Errorf("failed to get the secret %s in namespace %s: %v", secretRef.Name, namespace, err)
 		}
 
 		if secret.Type == v1.SecretTypeServiceAccountToken {
@@ -146,21 +154,15 @@ func getServiceAccount(c *rest.Config) (cacrt []byte, token string, _ error) {
 	}
 
 	if secret == nil {
-		return nil, "", fmt.Errorf("serviceaccount %s has no secret type %s", name, v1.SecretTypeServiceAccountToken)
-	}
-
-	var ok bool
-	cacrt, ok = secret.Data["ca.crt"]
-	if !ok {
-		return nil, "", fmt.Errorf("key 'ca.crt' not found in %s", secret.GetName())
+		return "", fmt.Errorf("serviceaccount %s has no secret type %s", name, v1.SecretTypeServiceAccountToken)
 	}
 
 	tokenBytes, ok := secret.Data["token"]
 	if !ok {
-		return nil, "", fmt.Errorf("key 'token' not found in %s", secret.GetName())
+		return "", fmt.Errorf("key 'token' not found in %s", secret.GetName())
 	}
 
-	return cacrt, string(tokenBytes), nil
+	return string(tokenBytes), nil
 }
 
 // The PEM-encoded private key is displayed first.
