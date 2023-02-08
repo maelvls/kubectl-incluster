@@ -1,14 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/jaytaylor/go-hostsfile"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +38,7 @@ var (
 	replacecacertD  = flag.String("replace-cacert", "", "Deprecated, please use --replace-ca-cert instead.")
 	printClientCert = flag.Bool("print-client-cert", false, "Instead of printing the kube config, print the content of the kube config's client-certificate-data followed by the client-key-data.")
 	printCACert     = flag.Bool("print-ca-cert", false, "Instead of printing a kubeconfig, print the content of the kube config's certificate-authority-data.")
+	debug           = flag.Bool("d", false, "Print debug logs.")
 
 	serviceaccount = flag.String("serviceaccount", "", strings.ReplaceAll(
 		`Instead of using the current pod's /var/run/secrets (when in cluster)
@@ -41,10 +49,15 @@ var (
 		provided in the kubeconfig, which is useful whenusing mitmproxy since
 		the token is passed as a header (HTTP) instead of a client certificate
 		(TLS).`, "\t", ""))
+	sa = flag.String("sa", "", "Shorthand for --serviceaccount.")
 )
 
 func main() {
 	flag.Parse()
+
+	if *debug {
+		logutil.EnableDebug = true
+	}
 
 	if *deprecated {
 		logutil.Infof("--embed is deprecated since it is now turned on by default")
@@ -60,14 +73,52 @@ func main() {
 		*root = os.Getenv("TELEPRESENCE_ROOT")
 	}
 
+	proxy := os.Getenv("HTTPS_PROXY")
+
+	var proxyCACert string
+	var err error
+	if proxy != "" {
+		proxyCACert, err = fetchCACertFromMitmproxy(proxy)
+		if err != nil {
+			logutil.Debugf("fetching the CA certificate from mitmproxy: %s", err)
+		}
+	}
+
 	c, err := RestConfig(*kubeconfig, *kubecontext, "kubectl-incluster")
 	if err != nil {
 		logutil.Errorf("loading: %s", err)
 		os.Exit(1)
 	}
 
+	// The flag --serviceaccount takes precedence over the --sa flag.
+	if *sa != "" && *serviceaccount == "" {
+		*serviceaccount = *sa
+	}
+
 	if *serviceaccount != "" {
-		token, err := getServiceAccount(c)
+		// We don't use the above 'c' because 'c' is meant to be customized (the
+		// CA cert is changed, etc.). Here, we want the "unmodified" config so
+		// that we can connect to the Kubernetes API.
+		untouched, err := RestConfig(*kubeconfig, *kubecontext, "kubectl-incluster")
+		if err != nil {
+			logutil.Errorf("loading: %s", err)
+			os.Exit(1)
+		}
+
+		// Chicken and egg: the whole purpose of kubectl incluster is to create
+		// a kubeconfig that will work when used for MITM proxying over the HTTP
+		// proxy protocol, i.e., when using HTTPS_PROXY and HTTP_PROXY. For
+		// that, kubectl incluster needs to talk to the Kubernetes API, which is
+		// impossible since HTTPS_PROXY is enabled but without the correct
+		// adjustments to the kubeconfig. So we disable HTTPS_PROXY here.
+		//
+		// We can't just 'os.Unsetenv("HTTPS_PROXY")' because the default
+		// http.Transport loads HTTPS_PROXY before this code runs.
+		untouched.Proxy = func(r *http.Request) (*url.URL, error) {
+			return nil, nil
+		}
+
+		token, err := getServiceAccount(untouched)
 		if err != nil {
 			logutil.Errorf("while processing flag --serviceaccount: %s", err)
 			os.Exit(1)
@@ -78,6 +129,138 @@ func main() {
 		c.KeyFile = ""
 		c.CertData = nil
 		c.CertFile = ""
+	}
+
+	if proxy != "" {
+		// Now, let's check whether the proxy supports streaming. This check is
+		// performed because mitmproxy doesn't stream reponses by default, which
+		// blocks Kubernetes' watching mechanism.
+
+		// Create a temporary server that listens on a random port.
+		logutil.Debugf("creating a temporary server to test whether the proxy supports streaming")
+		srv := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			logutil.Debugf("client connected, temporary server sending 'DONE'")
+			w.Write([]byte("DONE"))
+
+			if fl, ok := w.(http.Flusher); ok {
+				fl.Flush()
+			}
+
+			// Pretend that the server is streaming data.
+			time.Sleep(10 * time.Minute)
+		}))
+		l, err := net.Listen("tcp", ":0")
+		if err != nil {
+			logutil.Errorf("creating a temporary server: %s", err)
+			os.Exit(1)
+		}
+		go func() {
+			_ = http.Serve(l, srv)
+		}()
+
+		// Create a temporary client that connects to the temporary server.
+		client := &http.Client{
+			Transport: &http.Transport{
+				Proxy: func(r *http.Request) (*url.URL, error) {
+					return url.Parse(proxy)
+				},
+			},
+		}
+
+		// The query parameter 'watch=true' is what I use in the mitmproxy
+		// script to enable response streaming.
+		req, err := http.NewRequest("GET", "http://"+l.Addr().String()+"?watch=true", nil)
+		if err != nil {
+			panic(err)
+		}
+
+		ctx, cancel := context.WithTimeout(req.Context(), 100*time.Millisecond)
+		defer cancel()
+
+		resp, err := client.Do(req.WithContext(ctx))
+		operr := &net.OpError{}
+		if errors.As(err, &operr) && operr.Op == "proxyconnect" {
+			logutil.Errorf("the env var HTTPS_PROXY is set to %q, but the proxy doesn't seem to be running: %s", proxy, operr.Err)
+			os.Exit(1)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			logutil.Errorf(strings.ReplaceAll(`the proxy does not supports streaming responses.
+				If you are using mitmproxy, you can enable streaming by using a custom script with the flag '-s':
+				    mitmproxy -s <(curl -L https://raw.githubusercontent.com/maelvls/kubectl-incluster/main/watch-stream.py)`, "\t", ""))
+			os.Exit(1)
+		}
+		if err != nil {
+			logutil.Errorf("checking whether proxy supports response streaming using a fake streaming server: %s", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			logutil.Errorf("checking whether proxy supports response streaming using a fake streaming server: the fake server returned a non-200 status code: %d", resp.StatusCode)
+			os.Exit(1)
+		}
+
+		buf := make([]byte, 1024)
+		for {
+			d, err := resp.Body.Read(buf)
+			logutil.Debugf("checking whether proxy supports response streaming: read %d bytes from the temporary server: %s", d, string(buf))
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				logutil.Errorf("checking whether proxy supports response streaming: while reading the response body: %s", err)
+				os.Exit(1)
+			}
+			if bytes.Contains(buf, []byte("DONE")) {
+				logutil.Debugf("the proxy supports streaming responses")
+				break
+			}
+		}
+		l.Close()
+		resp.Body.Close()
+	}
+
+	// Go skips the HTTPS_PROXY env var if the host is a localhost address
+	// (e.g., 127.0.0.1 or localhost). To work around that,
+	if proxy != "" && (strings.Contains(c.Host, "localhost") || strings.Contains(c.Host, "127.0.0.1")) {
+		// Let's figure out if we have an alias to 127.0.0.1 other than
+		// "localhost" in /etc/hosts to work around the Go issue.
+
+		addrs, err := hostsfile.ReverseLookup("127.0.0.1")
+		if err != nil {
+			logutil.Infof(strings.ReplaceAll(
+				`while trying to figure out whether you will have a problem with
+				Go ignoring HTTPS_PROXY when the host is "127.0.0.1" or "localhost",
+				we encountered an error while reading /etc/hosts: %s.`, "\t", ""), err)
+			os.Exit(1)
+		}
+		logutil.Debugf("aliases found for 127.0.0.1: %s", addrs)
+
+		alias := ""
+		for _, addr := range addrs {
+			if addr != "localhost" {
+				alias = addr
+				break
+			}
+		}
+
+		if alias == "" {
+			logutil.Infof(strings.ReplaceAll(
+				`no 127.0.0.1 alias found in /etc/hosts other than "localhost". If
+				you run a Go program which tries to dial "127.0.0.1" or "localhost", Go
+				will ignore the HTTPS_PROXY env var.
+				
+				To fix this issue, run the following command:
+				    sudo tee -a /etc/hosts <<<"127.0.0.1 me"`, "\t", ""))
+		}
+		logutil.Debugf("using the alias '%s'", alias)
+
+		c.Host = strings.ReplaceAll(c.Host, "localhost", alias)
+		c.Host = strings.ReplaceAll(c.Host, "127.0.0.1", alias)
+	}
+
+	if proxyCACert != "" {
+		c.TLSClientConfig.CAData = []byte(proxyCACert)
 	}
 
 	switch {
@@ -96,7 +279,7 @@ func main() {
 		}
 		fmt.Printf("%s", pem)
 	default:
-		kubeconfig, err := kubeconfigFromRestConfig(c, *replacecacert)
+		kubeconfig, err := kubeconfigFromRestConfig(c, *replacecacert, proxyCACert)
 		if err != nil {
 			logutil.Errorf("building the kubeconfig: %s", err)
 			os.Exit(1)
@@ -108,6 +291,30 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func fetchCACertFromMitmproxy(proxy string) (pem string, _ error) {
+	proxyURL, _ := url.Parse(proxy)
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+	resp, err := client.Get("http://mitm.it/cert/pem")
+	if err != nil {
+		return "", fmt.Errorf("while trying to fetch the CA cert at GET mitm.it/cert/pem: %s", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.Header.Get("Content-Type") != "application/x-x509-ca-cert" {
+		logutil.Errorf("unexpected content type of GET mitm.it/cert/pem: %s", resp.Header.Get("Content-Type"))
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("while reading the body of GET mitm.it/cert/pem: %s", err)
+	}
+
+	return string(body), nil
 }
 
 func getServiceAccount(c *rest.Config) (token string, _ error) {
@@ -215,7 +422,7 @@ func caCertPEMFromRestConfig(restconf *rest.Config) ([]byte, error) {
 // kube config as a base64 string. Otherwise, the paths to the token and to
 // the ca file are used in the kube config.
 // https://github.com/kubernetes/client-go/issues/711
-func kubeconfigFromRestConfig(restconf *rest.Config, replaceCACertFile string) (*clientcmdapi.Config, error) {
+func kubeconfigFromRestConfig(restconf *rest.Config, replaceCACertFile, replaceCAData string) (*clientcmdapi.Config, error) {
 	apiconf := clientcmdapi.NewConfig()
 
 	apiconf.Clusters["kubectl-incluster"] = &clientcmdapi.Cluster{

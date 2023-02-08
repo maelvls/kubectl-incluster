@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/imdario/mergo v0.3.11 // indirect
+	github.com/jaytaylor/go-hostsfile v0.0.0-20220426042432-61485ac1fa6c
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d
 	golang.org/x/crypto v0.0.0-20201124201722-c8d3bf9c5392 // indirect
