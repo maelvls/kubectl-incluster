@@ -605,3 +605,40 @@ As per https://github.com/telepresenceio/telepresence/issues/1944, the workaroun
 ```sh
 sudo tee -a  /etc/fuse.conf <<<user_allow_other
 ```
+
+### GKE's kubeconfig
+
+The GKE kubeconfig created by `gcloud container cluster get-credentials` doesn't have a token or
+a client certificate, which means it won't work with `kubectl incluster`.
+
+The workaround is to create a "god mode" service account so that it can do its thing:
+
+```bash
+$ kubectl apply -f- <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubectl-incluster
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubectl-incluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: kubectl-incluster
+  namespace: kube-system
+EOF
+```
+
+Then, for example:
+
+```bash
+export KUBECONFIG=$(kubectl incluster --sa kube-system/kubectl-incluster)
+kubectl get pods
+```
