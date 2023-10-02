@@ -25,6 +25,7 @@ kubeconfig that you can use somewhere else.
   - [The `--print-client-cert` flag](#the---print-client-cert-flag)
 - [mitmproxy and Telepresence gotchas](#mitmproxy-and-telepresence-gotchas)
   - [The `$TELEPRESENCE_ROOT` stays empty on Linux](#the-telepresence_root-stays-empty-on-linux)
+- [Workaround for Google Kubernetes Engine (GKE)](#workaround-for-google-kubernetes-engine-gke)
 
 ## Use-case: Telepresence 1 + mitmproxy for debugging cert-manager
 
@@ -606,7 +607,7 @@ As per https://github.com/telepresenceio/telepresence/issues/1944, the workaroun
 sudo tee -a  /etc/fuse.conf <<<user_allow_other
 ```
 
-### GKE's kubeconfig
+## Workaround for Google Kubernetes Engine (GKE)
 
 The GKE kubeconfig created by `gcloud container cluster get-credentials` doesn't have a token or
 a client certificate, which means it won't work with `kubectl incluster`.
