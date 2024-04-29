@@ -526,6 +526,10 @@ func outClusterConfig(kubeconfig, kubecontext string) (*rest.Config, error) {
 		return nil, fmt.Errorf("error loading kubeconfig: %v", err)
 	}
 
+	if kubecontext == "" && apicfg.CurrentContext == "" {
+		return nil, fmt.Errorf("no context was provided and no current context was found in the kubeconfig")
+	}
+
 	return clientcmd.NewDefaultClientConfig(*apicfg, &clientcmd.ConfigOverrides{
 		CurrentContext: kubecontext,
 	}).ClientConfig()
