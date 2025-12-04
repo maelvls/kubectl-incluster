@@ -1,4 +1,3 @@
-
 """
 This custom pretty-printer for mitmproxy will decode the base64url-encoded
 'payload' and 'protected' fields. This pretty-printer is useful for
@@ -44,6 +43,7 @@ import base64
 import typing
 import re
 
+
 def format_json(data: typing.Any) -> typing.Iterator[base.TViewLine]:
     encoder = json.JSONEncoder(indent=4, sort_keys=True, ensure_ascii=False)
     current_line: base.TViewLine = []
@@ -64,30 +64,25 @@ def format_json(data: typing.Any) -> typing.Iterator[base.TViewLine]:
             current_line.append(("text", chunk))
     yield current_line
 
-class ViewJoseJson(contentviews.View):
-    name = "jose+json"
-    content_types = ["application/jose+json"]
 
-    def __call__(self, data: bytes, **metadata) -> contentviews.TViewResult:
-        data = json.loads(data.decode("utf-8"))
-        return (
-            "protected & payload base64-decoded inline",
-            format_json(josejson(data)),
-        )
-
-    def render_priority(
+class ViewJoseJson(contentviews.Contentview):
+    def prettify(
         self,
         data: bytes,
-        *,
-        content_type: typing.Optional[str] = None,
-        flow: typing.Optional[flow.Flow] = None,
-        http_message: typing.Optional[http.Message] = None,
-        **unknown_metadata,
-    ) -> float:
-        if content_type == "application/jose+json":
-            return 1
+        metadata: contentviews.Metadata,
+    ) -> str:
+        data = json.loads(data.decode("utf-8"))
+        decoded_data = josejson(data)
+        return json.dumps(decoded_data, indent=4, sort_keys=True, ensure_ascii=False)
+
+    def render_priority(self, data: bytes, metadata: contentviews.Metadata) -> float:
+        if metadata.content_type and metadata.content_type.startswith(
+            "application/jose+json"
+        ):
+            return 2
         else:
             return 0
+
 
 def josejson(data: typing.Any) -> typing.Any:
     if len(data["protected"]) == 0:
@@ -114,10 +109,13 @@ def josejson(data: typing.Any) -> typing.Any:
 
     return data
 
+
 view = ViewJoseJson()
+
 
 def load(l):
     contentviews.add(view)
+
 
 def done():
     contentviews.remove(view)
